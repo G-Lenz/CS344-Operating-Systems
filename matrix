@@ -1,0 +1,265 @@
+#!/bin/bash
+
+dims()
+{
+# NAME
+#   dims - prints the dimensions of a matrix
+# SYNOPSIS
+#   matrix dims [MATRIX]
+# DESCRIPTION
+#   Outputs the dimensions of a matrix in the format "rows cols" 
+# Author
+#   Written by George Lenz (lenzg@oregonstate.edu)
+
+#check for correct number of arguments
+[ $# -gt 1 ] &&  echo "invalid number of arguments" >&2 && exit 1 
+
+tempFile=tempFile$$
+
+#if file is provided make sure it is readable
+#if no file provided get manual input
+case "$#" in
+    0) cat > $tempFile ; set -- $tempFile;;
+    1) [ ! -r $1 ] && echo "$1 does not exit" >&2 && exit 1  
+esac
+
+#print the dimensions to stdout
+printf "%s\n" "$(cat $1 | wc -l) $(head -1 $1 | wc -w)" 
+
+#rm the tempFile
+rm -f "$tempFile"
+}
+
+transpose()
+{
+#NAME
+#  transpose - transposes a matrix along its diagnol
+#SYNOPSIS
+#  matrix transpose [matrix]
+#Description
+#  Takes a matrix and outputs the transposed matrix to stdout
+#Author
+#  Written by George Lenz (lenzg@oregonstate.edu)
+
+#check for valid number of args
+[ $# -gt 1 ] &&  echo "invalid number of arguments" >&2 && exit 1 
+
+#create temporary files
+tempFile=tempFile$$
+tempColFile=tempColFile$$
+tempRowFile=tempRowFile$$
+
+#ask for manual input if no file provided
+case "$#" in
+    0) cat > $tempFile ; set -- $tempFile;;
+    1) [ ! -r $1 ] && echo "$1 does not exit" >&2 && exit 1  
+esac
+
+i=1
+
+#get word count
+endOfLine=$(head -1 $1 | wc -w)
+
+#while not past the last word, make the columns into rows, save into temp file
+while [ $i -le $endOfLine ]
+do
+    cut -f $i $1 > $tempColFile
+    tempLine=$(cat $tempColFile | tr '\n' '\t')
+    echo -e "${tempLine%?}" >> $tempRowFile
+    i=$(($i + 1))
+done
+
+#print out transposed matrix temp file
+cat $tempRowFile
+
+#remove all temp files
+rm -f $tempFile $tempColFile $tempRowFile
+
+}
+
+mean()
+{
+#NAME
+#  mean - calculates the mean of each column in the matrix
+#SYNOPSIS
+#  matrix mean [matrix]
+#Description
+#  Takes a matrix and calculates the mean of each column separated by a space
+#Author
+#  Written by George Lenz (lenzg@oregonstate.edu)
+
+#check for valid number of arguments
+[ $# -gt 1 ] &&  echo "invalid number of arguments" >&2 && exit 1 
+
+tempFile=tempFile$$
+
+#get manual input if a file is not provided, if it is, check that it's readable
+case "$#" in
+    0) cat > $tempFile ; set -- $tempFile;;
+    1) [ ! -r $1 ] && echo "$1 does not exit" >&2 && exit 1  
+esac
+
+i=1
+
+#get the number of columns and rows
+numCols=$(head -1 $1 | wc -w)
+numRows=$(cat $1 | wc -l)
+
+#loop through all columns
+while [ $i -le $numCols ] 
+do
+    total=0
+
+    #isolate a column
+    cut -f $i $1 > $tempFile 
+   
+    #loop through items in the isolated column and add to total
+    while read aNum
+    do
+        total=$((total + aNum)) 
+             
+    done < $tempFile
+    
+   #get an average, rounded to the nearest integer
+   [ $total -gt 0 ] && average=$(expr $(expr $total + $numRows / 2) / $numRows)
+   [ $total -le 0 ] && average=$(expr $(expr $total - $numRows / 2) / $numRows)
+   
+   #format the output and print
+   [ $i -lt $numCols ] && printf "%s\t" "$average"
+   [ $i -eq $numCols ] && printf "%s\n" "$average"  
+
+   i=$((i + 1))
+          
+done 
+
+#remove temp file 
+rm -f $tempFile
+}
+
+add()
+{
+#NAME
+#  add - adds two matrices
+#SYNOPSIS
+#  matrix add [matrix] [matrix]
+#Description
+#  Takes two  matrices and adds them together element wise
+#Author
+#  Written by George Lenz (lenzg@oregonstate.edu)
+
+#check for proper number of arguments
+[ $# -ne 2 ] &&  echo "invalid number of arguments" >&2 && exit 1 
+
+#check if input files are readable
+[ ! -r $1 ] || [ ! -r $2 ]&& echo "File Does Not Exist" >&2 && exit 1
+
+#get dimensions of matrices
+rows1=$(dims $1 | cut -d ' ' -f 1)
+rows2=$(dims $2 | cut -d ' ' -f 1)
+cols1=$(dims $1 | cut -d ' ' -f 2)
+cols2=$(dims $2 | cut -d ' ' -f 2)
+
+#check if matrix dimensions allow for addition
+[ ! $rows1 -eq $rows2 ] || [ ! $rows1 -eq $rows2 ] && echo "Can't add" >&2 && exit 1
+
+tempFile="tempFile$$"
+
+#loop through both matrix files
+while read line && read line2 <&3;
+do
+    i=1
+
+    #loop through each number in the first file
+    for word in $line
+    do
+        #cut out column i of corresponding line of file2
+        word2=$(echo $line2 | cut -d ' ' -f $i)
+
+        #print out formatted sum and store in tempFile
+        [ $i -eq $cols1 ] && echo -ne "$(($word + $word2))\n" >> $tempFile     
+        [ $i -ne $cols1 ] && echo -ne "$(($word + $word2))\t" >> $tempFile
+        ((i++))        
+    done
+done < $1 3<$2
+
+#output results to stdout
+cat $tempFile
+
+#remove tempfile
+rm -f $tempFile
+
+}
+
+multiply()
+{
+#NAME
+#  multipy - multiplies two matrices
+#SYNOPSIS
+#  matrix multiply [matrix] [matrix]
+#Description
+#  Takes two matrices and multiplies them
+#Author
+#  Written by George Lenz (lenzg@oregonstate.edu)
+
+#check for proper number of arguments
+[ $# -ne 2 ] &&  echo "invalid number of arguments" >&2 && exit 1 
+
+#check if matrix files are readable
+[ ! -r $1 ] || [ ! -r $2 ]&& echo "File Does Not Exist" >&2 && exit 1
+
+#get dimensions of matrices
+rows1=$(dims $1 | cut -d ' ' -f 1)
+rows2=$(dims $2 | cut -d ' ' -f 1)
+cols1=$(dims $1 | cut -d ' ' -f 2)
+cols2=$(dims $2 | cut -d ' ' -f 2)
+
+#check if dimensions of matrices allow for multiplication
+[ ! $cols1 -eq $rows2 ] && echo "ERROR: Mismatched Matrix" >&2 && exit 1
+
+tempFile="tempFile$$"
+tempFile2="tempFile2$$"
+
+#loop through the firt matrix line by line
+while read line
+do
+    j=1
+        #loop through the columns of second matrix
+        while [ $j -le $cols2 ]
+        do
+            total=0
+            i=1
+            
+            #store column of the second matrix in tempFile2
+            cut -f $j $2 | tr '\n' '\t' > $tempFile2
+ 
+            #loop through each item in line of the first matrix
+            for number in $line
+            do
+                #get number of column in matrix 2
+                number2=$(cut -f $i $tempFile2)
+                #multiply the numbers and add it to the total
+                product=$((number * number2))
+                total=$((total + product))
+                ((i++))
+            done
+
+            #print formatted output to tempFile
+            [ $j -lt $cols2 ] && echo -ne "$total\t" >> $tempFile
+            [ $j -eq $cols2 ] && echo -ne "$total\n" >> $tempFile
+            
+            ((j++))
+        done
+
+done < $1
+
+#print out and remove all temp files
+cat $tempFile
+rm -f $tempFile $tempFile2
+    
+     
+}
+$1 "${@:2}"
+
+
+
+
